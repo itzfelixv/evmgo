@@ -11,13 +11,14 @@ asset_name() {
   os=$1
   arch=$2
   version=$3
+  asset_version=${version#v}
 
   case "$os" in
     windows)
-      printf '%s\n' "${PROJECT_REPO}_${version}_${os}_${arch}.zip"
+      printf '%s\n' "${PROJECT_REPO}_${asset_version}_${os}_${arch}.zip"
       ;;
     *)
-      printf '%s\n' "${PROJECT_REPO}_${version}_${os}_${arch}.tar.gz"
+      printf '%s\n' "${PROJECT_REPO}_${asset_version}_${os}_${arch}.tar.gz"
       ;;
   esac
 }
@@ -31,14 +32,43 @@ checksum_for_asset() {
 
 latest_version_from_json() {
   json=$1
-  version=$(
-    printf '%s\n' "$json" |
-      sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
-      head -n 1
-  )
+  releases_file=$(mktemp)
+  version=''
+
+  printf '%s' "$json" |
+    tr '\n' ' ' |
+    sed 's/^[[:space:]]*\[//; s/\][[:space:]]*$//' |
+    sed 's/}[[:space:]]*,[[:space:]]*{/}\n{/g' > "$releases_file"
+
+  while IFS= read -r release || [ -n "$release" ]; do
+    tag=$(
+      printf '%s\n' "$release" |
+        sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
+        head -n 1
+    )
+    draft=$(
+      printf '%s\n' "$release" |
+        sed -n 's/.*"draft"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' |
+        head -n 1
+    )
+    prerelease=$(
+      printf '%s\n' "$release" |
+        sed -n 's/.*"prerelease"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' |
+        head -n 1
+    )
+
+    case "$tag:$draft:$prerelease" in
+      v*:false:false)
+        version=$tag
+        break
+        ;;
+    esac
+  done < "$releases_file"
+
+  rm -f "$releases_file"
 
   if [ -z "$version" ]; then
-    printf '%s\n' 'unable to parse tag_name from release metadata' >&2
+    printf '%s\n' 'unable to find a stable v* release in release metadata' >&2
     return 1
   fi
 
@@ -117,16 +147,24 @@ platform_arch() {
 profile_file_for_shell() {
   shell_path=${SHELL:-}
   shell_name=${shell_path##*/}
+  home_dir=${HOME:-/nonexistent}
 
   case "$shell_name" in
     zsh)
-      printf '%s\n' "${HOME:-/nonexistent}/.zshrc"
+      printf '%s\n' "$home_dir/.zshrc"
       ;;
     bash)
-      printf '%s\n' "${HOME:-/nonexistent}/.bashrc"
+      for candidate in "$home_dir/.bash_profile" "$home_dir/.bash_login" "$home_dir/.profile"; do
+        if [ -f "$candidate" ]; then
+          printf '%s\n' "$candidate"
+          return 0
+        fi
+      done
+
+      printf '%s\n' "$home_dir/.bashrc"
       ;;
     *)
-      printf '%s\n' "${HOME:-/nonexistent}/.profile"
+      printf '%s\n' "$home_dir/.profile"
       ;;
   esac
 }
@@ -159,7 +197,7 @@ resolve_version() {
   fi
 
   metadata_file=$(mktemp)
-  if ! download_to_file "${GITHUB_API_ROOT}/releases/latest" "$metadata_file"; then
+  if ! download_to_file "${GITHUB_API_ROOT}/releases" "$metadata_file"; then
     rm -f "$metadata_file"
     return 1
   fi

@@ -51,11 +51,18 @@ function Get-AssetName {
     [string]$Version
   )
 
-  if ($Os -eq 'windows') {
-    return "$ProjectRepo`_$Version`_$Os`_$Arch.zip"
+  $assetVersion = if ($Version.StartsWith('v', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $Version.Substring(1)
+  }
+  else {
+    $Version
   }
 
-  return "$ProjectRepo`_$Version`_$Os`_$Arch.tar.gz"
+  if ($Os -eq 'windows') {
+    return "$ProjectRepo`_$assetVersion`_$Os`_$Arch.zip"
+  }
+
+  return "$ProjectRepo`_$assetVersion`_$Os`_$Arch.tar.gz"
 }
 
 function Get-ChecksumForAsset {

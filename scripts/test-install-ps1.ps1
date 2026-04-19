@@ -104,10 +104,10 @@ $env:EVMGO_INSTALLER_TESTING = '1'
 . $installerPath
 
 $linuxAssetName = Get-AssetName -Os 'linux' -Arch 'amd64' -Version 'v0.1.0'
-Assert-Equal -Expected 'evmgo_v0.1.0_linux_amd64.tar.gz' -Actual $linuxAssetName -Message 'Get-AssetName returned an unexpected linux asset name'
+Assert-Equal -Expected 'evmgo_0.1.0_linux_amd64.tar.gz' -Actual $linuxAssetName -Message 'Get-AssetName returned an unexpected linux asset name'
 
 $windowsAssetName = Get-AssetName -Os 'windows' -Arch 'amd64' -Version 'v0.1.0'
-Assert-Equal -Expected 'evmgo_v0.1.0_windows_amd64.zip' -Actual $windowsAssetName -Message 'Get-AssetName returned an unexpected windows asset name'
+Assert-Equal -Expected 'evmgo_0.1.0_windows_amd64.zip' -Actual $windowsAssetName -Message 'Get-AssetName returned an unexpected windows asset name'
 
 $latestVersion = Get-LatestVersionFromJson -Json @'
 [
@@ -158,11 +158,11 @@ New-Item -ItemType Directory -Path $subprocessSyntheticRoot | Out-Null
 
 try {
   $subprocessPayloadDir = Join-Path $subprocessSyntheticRoot 'payload'
-  $subprocessArchiveSourceDir = Join-Path $subprocessPayloadDir 'evmgo_v0.1.0_windows_amd64'
+  $subprocessArchiveSourceDir = Join-Path $subprocessPayloadDir 'evmgo_0.1.0_windows_amd64'
   $subprocessApiRoot = Join-Path $subprocessSyntheticRoot 'api'
   $subprocessReleaseRoot = Join-Path $subprocessSyntheticRoot 'downloads'
   $subprocessVersionRoot = Join-Path $subprocessReleaseRoot 'v0.1.0'
-  $subprocessArchiveName = 'evmgo_v0.1.0_windows_amd64.zip'
+  $subprocessArchiveName = 'evmgo_0.1.0_windows_amd64.zip'
   $subprocessArchivePath = Join-Path $subprocessVersionRoot $subprocessArchiveName
   $subprocessChecksumsPath = Join-Path $subprocessVersionRoot 'checksums.txt'
   $subprocessDefaultBinDir = Join-Path $subprocessSyntheticRoot 'custom-bin'
@@ -208,11 +208,11 @@ New-Item -ItemType Directory -Path $tmpDir | Out-Null
 try {
   $checksumsPath = Join-Path $tmpDir 'checksums.txt'
   @'
-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  evmgo_v0.1.0_windows_amd64.zip
-fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210  evmgo_v0.1.0_linux_amd64.tar.gz
+0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  evmgo_0.1.0_windows_amd64.zip
+fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210  evmgo_0.1.0_linux_amd64.tar.gz
 '@ | Set-Content -NoNewline -Path $checksumsPath
 
-  $checksum = Get-ChecksumForAsset -ChecksumsPath $checksumsPath -AssetName 'evmgo_v0.1.0_windows_amd64.zip'
+  $checksum = Get-ChecksumForAsset -ChecksumsPath $checksumsPath -AssetName 'evmgo_0.1.0_windows_amd64.zip'
   Assert-Equal -Expected '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' -Actual $checksum -Message 'Get-ChecksumForAsset returned an unexpected checksum'
 }
 finally {
@@ -225,9 +225,9 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyCon
 
 try {
   $payloadDir = Join-Path $syntheticRoot 'payload'
-  $archiveSourceDir = Join-Path $payloadDir 'evmgo_v0.1.0_windows_amd64'
+  $archiveSourceDir = Join-Path $payloadDir 'evmgo_0.1.0_windows_amd64'
   $releaseDir = Join-Path $syntheticRoot 'release'
-  $archiveName = 'evmgo_v0.1.0_windows_amd64.zip'
+  $archiveName = 'evmgo_0.1.0_windows_amd64.zip'
   $script:SyntheticArchivePath = Join-Path $releaseDir $archiveName
   $script:SyntheticChecksumsPath = Join-Path $releaseDir 'checksums.txt'
   $fakeBinDir = Join-Path $syntheticRoot 'bin'
@@ -307,7 +307,7 @@ try {
     Assert-Equal -Expected 'synthetic-evmgo-binary' -Actual ([System.IO.File]::ReadAllText($expectedInstallPath)) -Message 'Synthetic installer flow should preserve the binary contents'
     Assert-Equal -Expected '2' -Actual "$($script:DownloadLog.Count)" -Message 'Synthetic installer flow should download release metadata artifacts once per install run'
     Assert-True -Condition ($script:DownloadLog[0] -match '/v0\.1\.0/checksums\.txt$') -Message 'Synthetic installer flow should resolve the release version before downloading checksums'
-    Assert-True -Condition ($script:DownloadLog[1] -match '/v0\.1\.0/evmgo_v0\.1\.0_windows_amd64\.zip$') -Message 'Synthetic installer flow should download the matching Windows archive for the resolved version'
+    Assert-True -Condition ($script:DownloadLog[1] -match '/v0\.1\.0/evmgo_0\.1\.0_windows_amd64\.zip$') -Message 'Synthetic installer flow should download the matching Windows archive for the resolved version'
     Assert-Equal -Expected "C:\Windows\System32;$fakeBinDir" -Actual $script:FakeUserPath -Message 'Synthetic installer flow should append the bin directory to the user PATH once'
     Assert-True -Condition ($env:PATH -match [Regex]::Escape($fakeBinDir)) -Message 'Synthetic installer flow should add the bin directory to the current process PATH'
 
