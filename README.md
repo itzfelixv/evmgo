@@ -16,7 +16,43 @@ A CLI for querying the EVM. No browser required. No mouse involved.
 
 ## Install
 
-Download a prebuilt archive from [GitHub Releases](https://github.com/itzfelixv/evmgo/releases), or build from source:
+Install the latest release on Unix-like systems:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/itzfelixv/evmgo/master/scripts/install.sh | sh
+```
+
+Install the latest release on Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/itzfelixv/evmgo/master/scripts/install.ps1 | iex
+```
+
+Pin a specific release on Unix-like systems:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/itzfelixv/evmgo/v0.1.0/scripts/install.sh | env VERSION=v0.1.0 sh
+```
+
+Pin a specific release on Windows PowerShell:
+
+```powershell
+$oldVersion = $env:VERSION
+try {
+  $env:VERSION = 'v0.1.0'
+  irm https://raw.githubusercontent.com/itzfelixv/evmgo/v0.1.0/scripts/install.ps1 | iex
+}
+finally {
+  if ($null -eq $oldVersion) {
+    Remove-Item Env:VERSION -ErrorAction SilentlyContinue
+  }
+  else {
+    $env:VERSION = $oldVersion
+  }
+}
+```
+
+If you prefer to build from source:
 
 ```bash
 git clone https://github.com/itzfelixv/evmgo.git
