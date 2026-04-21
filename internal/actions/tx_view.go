@@ -164,6 +164,10 @@ func GetTransactionView(ctx context.Context, client *rpc.Client, hash string, ab
 		}
 	}
 
+	if view.Status == "reverted" {
+		view.Revert = replayRevert(ctx, client, tx)
+	}
+
 	return view, nil
 }
 

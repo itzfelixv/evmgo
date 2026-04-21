@@ -225,6 +225,7 @@ func TestGetTransactionViewRevertedStatus(t *testing.T) {
 		"eth_getTransactionByHash":  `{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xa9059cbb00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000de0b6b3a7640000"}}`,
 		"eth_getTransactionReceipt": `{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x0","gasUsed":"0x5208","contractAddress":""}}`,
 		"eth_getBlockByNumber":      `{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x7","transactions":[]}}`,
+		"eth_call":                  `{"jsonrpc":"2.0","id":1,"error":{"code":3,"message":"execution reverted"}}`,
 	}, hits)
 	defer server.Close()
 
@@ -234,6 +235,33 @@ func TestGetTransactionViewRevertedStatus(t *testing.T) {
 	}
 	if got.Status != "reverted" {
 		t.Fatalf("unexpected status: %q", got.Status)
+	}
+}
+
+func TestGetTransactionViewIncludesRevertSectionWhenReplayReturnsReason(t *testing.T) {
+	txHash := "0x9999999999999999999999999999999999999999999999999999999999999999"
+	hits := map[string]int{}
+
+	server := newRPCServer(t, map[string]string{
+		"eth_getTransactionByHash":  `{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xa9059cbb00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000de0b6b3a7640000"}}`,
+		"eth_getTransactionReceipt": `{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x0","gasUsed":"0x5208","contractAddress":""}}`,
+		"eth_getBlockByNumber":      `{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x67d9d2f0","transactions":[]}}`,
+		"eth_call":                  `{"jsonrpc":"2.0","id":1,"error":{"code":3,"message":"execution reverted: ERC20: insufficient allowance"}}`,
+	}, hits)
+	defer server.Close()
+
+	got, err := GetTransactionView(context.Background(), rpc.NewClient(server.URL), txHash, "../../testdata/abi/erc20.json", false)
+	if err != nil {
+		t.Fatalf("GetTransactionView returned error: %v", err)
+	}
+	if got.Revert == nil {
+		t.Fatal("expected revert section")
+	}
+	if got.Revert.Decode.Status != "decoded" {
+		t.Fatalf("unexpected status: %q", got.Revert.Decode.Status)
+	}
+	if got.Revert.Decode.Reason != "ERC20: insufficient allowance" {
+		t.Fatalf("unexpected reason: %q", got.Revert.Decode.Reason)
 	}
 }
 

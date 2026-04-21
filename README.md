@@ -133,15 +133,22 @@ Accepted selectors:
 
 ### `tx`
 
-Fetch a transaction by hash.
+Fetch a transaction by hash with receipt and block-timestamp enrichment.
 
 ```bash
 evmgo tx 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+evmgo tx 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --abi ./testdata/abi/erc20.json
+evmgo tx 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --input
 ```
 
-Validation:
+Notes:
 
-- Transaction hashes must be full 32-byte hex hashes.
+- `tx` fetches the transaction first, then enriches it with receipt and timestamp data when available.
+- Contract calls show a `call:` section by default. If no ABI is supplied, the decode state stays non-fatal and reports `decode: unavailable (no ABI)`.
+- `--abi` is optional and only affects contract-call input decoding.
+- ABI read, parse, selector, and decode failures do not make `tx` fail after the transaction itself is fetched.
+- `--input` prints raw input bytes as `calldata` for contract calls and `initcode` for contract creation.
+- Reverted transactions attempt a best-effort `eth_call` replay to surface a revert reason when the RPC endpoint returns one.
 
 ### `receipt` / `rcpt`
 
