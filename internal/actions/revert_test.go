@@ -52,3 +52,19 @@ func TestDecodeRevertReasonUnavailable(t *testing.T) {
 		t.Fatalf("unexpected error: %q", got.Decode.Error)
 	}
 }
+
+func TestDecodeRevertReasonMalformedOversizedLengthIsUnavailable(t *testing.T) {
+	err := &rpc.RPCError{
+		Code:    3,
+		Message: "execution reverted",
+		Data:    json.RawMessage(`"0x08c379a00000000000000000000000000000000000000000000000000000000000000020ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"`),
+	}
+
+	got := decodeRevertSection(err)
+	if got.Decode.Status != "unavailable" {
+		t.Fatalf("unexpected status: %q", got.Decode.Status)
+	}
+	if got.Decode.Error != "no revert data" {
+		t.Fatalf("unexpected error: %q", got.Decode.Error)
+	}
+}

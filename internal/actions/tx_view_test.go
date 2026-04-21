@@ -236,6 +236,15 @@ func TestGetTransactionViewRevertedStatus(t *testing.T) {
 	if got.Status != "reverted" {
 		t.Fatalf("unexpected status: %q", got.Status)
 	}
+	if got.Revert == nil {
+		t.Fatal("expected revert section")
+	}
+	if got.Revert.Decode.Status != "unavailable" {
+		t.Fatalf("unexpected revert status: %q", got.Revert.Decode.Status)
+	}
+	if got.Revert.Decode.Error != "no revert data" {
+		t.Fatalf("unexpected revert error: %q", got.Revert.Decode.Error)
+	}
 }
 
 func TestGetTransactionViewIncludesRevertSectionWhenReplayReturnsReason(t *testing.T) {

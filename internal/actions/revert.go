@@ -81,12 +81,19 @@ func decodeStandardRevertReason(raw string) (string, bool) {
 		return "", false
 	}
 
+	for _, b := range decoded[36:60] {
+		if b != 0 {
+			return "", false
+		}
+	}
+
 	length := binary.BigEndian.Uint64(decoded[60:68])
 	start := 68
-	end := start + int(length)
-	if end > len(decoded) {
+	available := uint64(len(decoded) - start)
+	if length > available {
 		return "", false
 	}
+	end := start + int(length)
 
 	return string(decoded[start:end]), true
 }
