@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/itzfelixv/evmgo/internal/rpc"
@@ -12,6 +13,8 @@ import (
 
 func newRPCServer(t *testing.T, responses map[string]string, hits map[string]int) *httptest.Server {
 	t.Helper()
+
+	var mu sync.Mutex
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
@@ -23,7 +26,9 @@ func newRPCServer(t *testing.T, responses map[string]string, hits map[string]int
 			t.Fatalf("Decode failed: %v", err)
 		}
 
+		mu.Lock()
 		hits[req.Method]++
+		mu.Unlock()
 		payload, ok := responses[req.Method]
 		if !ok {
 			t.Fatalf("unexpected method: %s", req.Method)
@@ -72,6 +77,36 @@ func TestGetTransactionViewContractCallWithoutABIDefaultsToUnavailableDecode(t *
 	}
 	if got.Input != nil {
 		t.Fatalf("expected input to be hidden by default, got %#v", got.Input)
+	}
+}
+
+func TestGetTransactionRemainsCLIStable(t *testing.T) {
+	txHash := "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+	server := newRPCServer(t, map[string]string{
+		"eth_getTransactionByHash": `{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x10","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x5208","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xabcdef"}}`,
+	}, map[string]int{})
+	defer server.Close()
+
+	got, err := GetTransaction(context.Background(), rpc.NewClient(server.URL), txHash)
+	if err != nil {
+		t.Fatalf("GetTransaction returned error: %v", err)
+	}
+
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	for _, field := range []string{"type", "nonce", "gas", "gasPrice", "maxFeePerGas", "maxPriorityFeePerGas", "input"} {
+		if _, ok := payload[field]; ok {
+			t.Fatalf("expected GetTransaction JSON to omit %q, got %s", field, encoded)
+		}
 	}
 }
 
@@ -134,6 +169,29 @@ func TestGetTransactionViewPendingTransactionSkipsBlockLookup(t *testing.T) {
 	}
 }
 
+func TestGetTransactionViewTransferClassification(t *testing.T) {
+	txHash := "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	hits := map[string]int{}
+
+	server := newRPCServer(t, map[string]string{
+		"eth_getTransactionByHash":  `{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x10","blockNumber":"0x2a","type":"0x0","nonce":"0x1","gas":"0x5208","gasPrice":"0x3b9aca00","input":"0x"}}`,
+		"eth_getTransactionReceipt": `{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x1","gasUsed":"0x5208","contractAddress":""}}`,
+		"eth_getBlockByNumber":      `{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x6","transactions":[]}}`,
+	}, hits)
+	defer server.Close()
+
+	got, err := GetTransactionView(context.Background(), rpc.NewClient(server.URL), txHash, "", false)
+	if err != nil {
+		t.Fatalf("GetTransactionView returned error: %v", err)
+	}
+	if got.Kind != "transfer" {
+		t.Fatalf("unexpected kind: %q", got.Kind)
+	}
+	if got.Call != nil {
+		t.Fatalf("expected no call section, got %#v", got.Call)
+	}
+}
+
 func TestGetTransactionViewMinedWithoutReceiptOmitsStatus(t *testing.T) {
 	txHash := "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 	hits := map[string]int{}
@@ -154,5 +212,25 @@ func TestGetTransactionViewMinedWithoutReceiptOmitsStatus(t *testing.T) {
 	}
 	if got.Timestamp != "0x5" {
 		t.Fatalf("unexpected timestamp: %q", got.Timestamp)
+	}
+}
+
+func TestGetTransactionViewRevertedStatus(t *testing.T) {
+	txHash := "0x9999999999999999999999999999999999999999999999999999999999999999"
+	hits := map[string]int{}
+
+	server := newRPCServer(t, map[string]string{
+		"eth_getTransactionByHash":  `{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xa9059cbb00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000de0b6b3a7640000"}}`,
+		"eth_getTransactionReceipt": `{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x0","gasUsed":"0x5208","contractAddress":""}}`,
+		"eth_getBlockByNumber":      `{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x7","transactions":[]}}`,
+	}, hits)
+	defer server.Close()
+
+	got, err := GetTransactionView(context.Background(), rpc.NewClient(server.URL), txHash, "", false)
+	if err != nil {
+		t.Fatalf("GetTransactionView returned error: %v", err)
+	}
+	if got.Status != "reverted" {
+		t.Fatalf("unexpected status: %q", got.Status)
 	}
 }

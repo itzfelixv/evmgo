@@ -60,9 +60,24 @@ type TxViewResult struct {
 	Revert               *TxRevertSection `json:"revert,omitempty"`
 }
 
+type rawTransactionResult struct {
+	Hash                 string `json:"hash"`
+	From                 string `json:"from"`
+	To                   string `json:"to,omitempty"`
+	Value                string `json:"value"`
+	BlockNumber          string `json:"blockNumber,omitempty"`
+	Type                 string `json:"type,omitempty"`
+	Nonce                string `json:"nonce,omitempty"`
+	Gas                  string `json:"gas,omitempty"`
+	GasPrice             string `json:"gasPrice,omitempty"`
+	MaxFeePerGas         string `json:"maxFeePerGas,omitempty"`
+	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas,omitempty"`
+	Input                string `json:"input,omitempty"`
+}
+
 func GetTransactionView(ctx context.Context, client *rpc.Client, hash string, abiPath string, includeInput bool) (TxViewResult, error) {
 	var (
-		tx      TransactionResult
+		tx      rawTransactionResult
 		txErr   error
 		receipt ReceiptResult
 		rcptErr error
@@ -73,7 +88,7 @@ func GetTransactionView(ctx context.Context, client *rpc.Client, hash string, ab
 
 	go func() {
 		defer wg.Done()
-		tx, txErr = GetTransaction(ctx, client, hash)
+		tx, txErr = getTransactionViewRaw(ctx, client, hash)
 	}()
 
 	go func() {
@@ -146,7 +161,7 @@ func GetTransactionView(ctx context.Context, client *rpc.Client, hash string, ab
 	return view, nil
 }
 
-func classifyTransaction(tx TransactionResult) string {
+func classifyTransaction(tx rawTransactionResult) string {
 	if tx.To == "" {
 		return "contract-creation"
 	}
@@ -154,6 +169,15 @@ func classifyTransaction(tx TransactionResult) string {
 		return "transfer"
 	}
 	return "contract-call"
+}
+
+func getTransactionViewRaw(ctx context.Context, client *rpc.Client, hash string) (rawTransactionResult, error) {
+	var raw rawTransactionResult
+	if err := callJSONResult(ctx, client, "eth_getTransactionByHash", []any{hash}, &raw, ErrTransactionNotFound); err != nil {
+		return rawTransactionResult{}, err
+	}
+
+	return raw, nil
 }
 
 func inputLabel(kind string) string {
