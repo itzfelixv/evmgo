@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -87,5 +88,29 @@ func TestCallReturnsHTTPStatusError(t *testing.T) {
 	}
 	if strings.Contains(got, "decode") {
 		t.Fatalf("expected non-2xx response to avoid decode error, got %q", got)
+	}
+}
+
+func TestCallPreservesRPCErrorData(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":3,"message":"execution reverted","data":"0x08c379a00000000000000000000000000000000000000000000000000000000000000020"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+
+	err := client.Call(context.Background(), "eth_call", []any{map[string]any{"to": "0x2222222222222222222222222222222222222222"}, "latest"}, new(string))
+	if err == nil {
+		t.Fatal("expected Call to return an RPC error")
+	}
+
+	var rpcErr *RPCError
+	if !errors.As(err, &rpcErr) {
+		t.Fatalf("expected RPCError, got %T", err)
+	}
+
+	if got, ok := rpcErr.DataString(); !ok || got != "0x08c379a00000000000000000000000000000000000000000000000000000000000000020" {
+		t.Fatalf("unexpected RPC error data: %q, %v", got, ok)
 	}
 }

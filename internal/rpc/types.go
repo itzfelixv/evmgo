@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
@@ -9,12 +10,33 @@ import (
 )
 
 type RPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 func (e *RPCError) Error() string {
 	return fmt.Sprintf("rpc error %d: %s", e.Code, e.Message)
+}
+
+func (e *RPCError) DataString() (string, bool) {
+	if e == nil || len(e.Data) == 0 {
+		return "", false
+	}
+
+	var raw string
+	if err := json.Unmarshal(e.Data, &raw); err == nil && raw != "" {
+		return raw, true
+	}
+
+	var wrapped struct {
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(e.Data, &wrapped); err == nil && wrapped.Data != "" {
+		return wrapped.Data, true
+	}
+
+	return "", false
 }
 
 type BlockRef struct {
