@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -232,5 +234,100 @@ func TestGetTransactionViewRevertedStatus(t *testing.T) {
 	}
 	if got.Status != "reverted" {
 		t.Fatalf("unexpected status: %q", got.Status)
+	}
+}
+
+func TestGetTransactionViewCallDecodeSuccess(t *testing.T) {
+	txHash := "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	hits := map[string]int{}
+
+	server := newRPCServer(t, map[string]string{
+		"eth_getTransactionByHash":  `{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xa9059cbb00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000de0b6b3a7640000"}}`,
+		"eth_getTransactionReceipt": `{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x1","gasUsed":"0x5208","contractAddress":""}}`,
+		"eth_getBlockByNumber":      `{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x67d9d2f0","transactions":[]}}`,
+	}, hits)
+	defer server.Close()
+
+	got, err := GetTransactionView(context.Background(), rpc.NewClient(server.URL), txHash, "../../testdata/abi/erc20.json", false)
+	if err != nil {
+		t.Fatalf("GetTransactionView returned error: %v", err)
+	}
+	if got.Call == nil {
+		t.Fatal("expected call section")
+	}
+	if got.Call.Decode.Status != "decoded" {
+		t.Fatalf("unexpected decode status: %q", got.Call.Decode.Status)
+	}
+	if got.Call.Decode.Method != "transfer(address,uint256)" {
+		t.Fatalf("unexpected method: %q", got.Call.Decode.Method)
+	}
+	if len(got.Call.Decode.Args) != 2 {
+		t.Fatalf("unexpected arg count: %d", len(got.Call.Decode.Args))
+	}
+}
+
+func TestGetTransactionViewABIFailuresAreNonFatal(t *testing.T) {
+	txHash := "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	hits := map[string]int{}
+
+	server := newRPCServer(t, map[string]string{
+		"eth_getTransactionByHash":  `{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xa9059cbb00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000de0b6b3a7640000"}}`,
+		"eth_getTransactionReceipt": `{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x1","gasUsed":"0x5208","contractAddress":""}}`,
+		"eth_getBlockByNumber":      `{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x67d9d2f0","transactions":[]}}`,
+	}, hits)
+	defer server.Close()
+
+	missingABI, err := GetTransactionView(context.Background(), rpc.NewClient(server.URL), txHash, "/definitely/missing.json", false)
+	if err != nil {
+		t.Fatalf("GetTransactionView returned error: %v", err)
+	}
+	if missingABI.Call.Decode.Status != "unavailable" || missingABI.Call.Decode.Error == "" {
+		t.Fatalf("unexpected missing-abi decode: %#v", missingABI.Call.Decode)
+	}
+
+	dir := t.TempDir()
+	badABIPath := dir + "/broken.json"
+	if err := os.WriteFile(badABIPath, []byte("{]"), 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	badABI, err := GetTransactionView(context.Background(), rpc.NewClient(server.URL), txHash, badABIPath, false)
+	if err != nil {
+		t.Fatalf("GetTransactionView returned error: %v", err)
+	}
+	if badABI.Call.Decode.Status != "unavailable" || !strings.Contains(badABI.Call.Decode.Error, "parse abi file") {
+		t.Fatalf("unexpected parse-failure decode: %#v", badABI.Call.Decode)
+	}
+}
+
+func TestGetTransactionViewSelectorMissAndMismatchAreStructured(t *testing.T) {
+	selectorMissServer := newRPCServer(t, map[string]string{
+		"eth_getTransactionByHash":  `{"jsonrpc":"2.0","id":1,"result":{"hash":"0x1111111111111111111111111111111111111111111111111111111111111111","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xffffffff0000000000000000000000001111111111111111111111111111111111111111"}}`,
+		"eth_getTransactionReceipt": `{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"0x0","blockNumber":"0x2a","status":"0x1","gasUsed":"0x5208","contractAddress":""}}`,
+		"eth_getBlockByNumber":      `{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x67d9d2f0","transactions":[]}}`,
+	}, map[string]int{})
+	defer selectorMissServer.Close()
+
+	selectorMiss, err := GetTransactionView(context.Background(), rpc.NewClient(selectorMissServer.URL), "0x1111111111111111111111111111111111111111111111111111111111111111", "../../testdata/abi/erc20.json", false)
+	if err != nil {
+		t.Fatalf("GetTransactionView returned error: %v", err)
+	}
+	if selectorMiss.Call.Decode.Status != "unavailable" || !strings.Contains(selectorMiss.Call.Decode.Error, "selector not found in ABI") {
+		t.Fatalf("unexpected selector-miss decode: %#v", selectorMiss.Call.Decode)
+	}
+
+	mismatchServer := newRPCServer(t, map[string]string{
+		"eth_getTransactionByHash":  `{"jsonrpc":"2.0","id":1,"result":{"hash":"0x2222222222222222222222222222222222222222222222222222222222222222","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xa9059cbb"}}`,
+		"eth_getTransactionReceipt": `{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"0x0","blockNumber":"0x2a","status":"0x1","gasUsed":"0x5208","contractAddress":""}}`,
+		"eth_getBlockByNumber":      `{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x67d9d2f0","transactions":[]}}`,
+	}, map[string]int{})
+	defer mismatchServer.Close()
+
+	mismatch, err := GetTransactionView(context.Background(), rpc.NewClient(mismatchServer.URL), "0x2222222222222222222222222222222222222222222222222222222222222222", "../../testdata/abi/erc20.json", false)
+	if err != nil {
+		t.Fatalf("GetTransactionView returned error: %v", err)
+	}
+	if mismatch.Call.Decode.Status != "failed" || !strings.Contains(mismatch.Call.Decode.Error, "ABI mismatch") {
+		t.Fatalf("unexpected mismatch decode: %#v", mismatch.Call.Decode)
 	}
 }

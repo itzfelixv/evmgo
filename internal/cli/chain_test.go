@@ -302,6 +302,50 @@ func TestTxCommandTextOutputShowsDefaultCallSectionAndCalldata(t *testing.T) {
 	}
 }
 
+func TestTxCommandTextOutputShowsDecodedCallSection(t *testing.T) {
+	txHash := "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		var req struct {
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode failed: %v", err)
+		}
+
+		switch req.Method {
+		case "eth_getTransactionByHash":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xa9059cbb00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000de0b6b3a7640000"}}`))
+		case "eth_getTransactionReceipt":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x1","gasUsed":"0x5208","contractAddress":""}}`))
+		case "eth_getBlockByNumber":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x67d9d2f0","transactions":[]}}`))
+		default:
+			t.Fatalf("unexpected method: %s", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := NewRootCmd(stdout, stderr, func(string) string { return "" })
+	cmd.SetArgs([]string{"--rpc", server.URL, "tx", txHash, "--abi", "../../testdata/abi/erc20.json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	want := "hash: " + txHash + "\nkind: contract-call\nfrom: 0x1111111111111111111111111111111111111111\nto: 0x2222222222222222222222222222222222222222\nvalue: 0x0\nblock: 0x2a\ntimestamp: 0x67d9d2f0\nstatus: success\ntype: 0x2\nnonce: 0x15\ngas-limit: 0x186a0\nmax-fee-per-gas: 0x59682f00\nmax-priority-fee-per-gas: 0x3b9aca00\ngas-used: 0x5208\ninput-bytes: 68\nselector: 0xa9059cbb\n\ncall:\n  method: transfer(address,uint256)\n  to(address): 0x1111111111111111111111111111111111111111\n  amount(uint256): 1000000000000000000\n"
+	if stdout.String() != want {
+		t.Fatalf("unexpected stdout:\n%s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", stderr.String())
+	}
+}
+
 func TestTxCommandJSONOutputIncludesInitcodeWhenRequested(t *testing.T) {
 	txHash := "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
@@ -338,6 +382,94 @@ func TestTxCommandJSONOutputIncludesInitcodeWhenRequested(t *testing.T) {
 	}
 
 	want := "{\n  \"hash\": \"" + txHash + "\",\n  \"kind\": \"contract-creation\",\n  \"from\": \"0x1111111111111111111111111111111111111111\",\n  \"createdContract\": \"0x2222222222222222222222222222222222222222\",\n  \"value\": \"0x0\",\n  \"blockNumber\": \"0x2a\",\n  \"timestamp\": \"0x67d9d2f0\",\n  \"status\": \"success\",\n  \"type\": \"0x2\",\n  \"nonce\": \"0x15\",\n  \"gasLimit\": \"0x1fbd0\",\n  \"maxFeePerGas\": \"0x59682f00\",\n  \"maxPriorityFeePerGas\": \"0x3b9aca00\",\n  \"gasUsed\": \"0x1a2b3\",\n  \"inputBytes\": 18,\n  \"input\": {\n    \"label\": \"initcode\",\n    \"data\": \"0x608060405234801561001057600080fd5b50\"\n  }\n}\n"
+	if stdout.String() != want {
+		t.Fatalf("unexpected stdout:\n%s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", stderr.String())
+	}
+}
+
+func TestTxCommandJSONOutputShowsDecodedCallSection(t *testing.T) {
+	txHash := "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		var req struct {
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode failed: %v", err)
+		}
+
+		switch req.Method {
+		case "eth_getTransactionByHash":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xa9059cbb00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000de0b6b3a7640000"}}`))
+		case "eth_getTransactionReceipt":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x1","gasUsed":"0x5208","contractAddress":""}}`))
+		case "eth_getBlockByNumber":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x67d9d2f0","transactions":[]}}`))
+		default:
+			t.Fatalf("unexpected method: %s", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := NewRootCmd(stdout, stderr, func(string) string { return "" })
+	cmd.SetArgs([]string{"--rpc", server.URL, "tx", txHash, "--json", "--abi", "../../testdata/abi/erc20.json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	want := "{\n  \"hash\": \"" + txHash + "\",\n  \"kind\": \"contract-call\",\n  \"from\": \"0x1111111111111111111111111111111111111111\",\n  \"to\": \"0x2222222222222222222222222222222222222222\",\n  \"value\": \"0x0\",\n  \"blockNumber\": \"0x2a\",\n  \"timestamp\": \"0x67d9d2f0\",\n  \"status\": \"success\",\n  \"type\": \"0x2\",\n  \"nonce\": \"0x15\",\n  \"gasLimit\": \"0x186a0\",\n  \"maxFeePerGas\": \"0x59682f00\",\n  \"maxPriorityFeePerGas\": \"0x3b9aca00\",\n  \"gasUsed\": \"0x5208\",\n  \"inputBytes\": 68,\n  \"call\": {\n    \"selector\": \"0xa9059cbb\",\n    \"decode\": {\n      \"status\": \"decoded\",\n      \"method\": \"transfer(address,uint256)\",\n      \"args\": [\n        {\n          \"name\": \"to\",\n          \"type\": \"address\",\n          \"value\": \"0x1111111111111111111111111111111111111111\"\n        },\n        {\n          \"name\": \"amount\",\n          \"type\": \"uint256\",\n          \"value\": \"1000000000000000000\"\n        }\n      ]\n    }\n  }\n}\n"
+	if stdout.String() != want {
+		t.Fatalf("unexpected stdout:\n%s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", stderr.String())
+	}
+}
+
+func TestTxCommandJSONOutputShowsUnavailableDecodeState(t *testing.T) {
+	txHash := "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		var req struct {
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode failed: %v", err)
+		}
+
+		switch req.Method {
+		case "eth_getTransactionByHash":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x0","blockNumber":"0x2a","type":"0x2","nonce":"0x15","gas":"0x186a0","maxFeePerGas":"0x59682f00","maxPriorityFeePerGas":"0x3b9aca00","input":"0xffffffff0000000000000000000000001111111111111111111111111111111111111111"}}`))
+		case "eth_getTransactionReceipt":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x1","gasUsed":"0x5208","contractAddress":""}}`))
+		case "eth_getBlockByNumber":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x67d9d2f0","transactions":[]}}`))
+		default:
+			t.Fatalf("unexpected method: %s", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := NewRootCmd(stdout, stderr, func(string) string { return "" })
+	cmd.SetArgs([]string{"--rpc", server.URL, "tx", txHash, "--json", "--abi", "../../testdata/abi/erc20.json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	want := "{\n  \"hash\": \"" + txHash + "\",\n  \"kind\": \"contract-call\",\n  \"from\": \"0x1111111111111111111111111111111111111111\",\n  \"to\": \"0x2222222222222222222222222222222222222222\",\n  \"value\": \"0x0\",\n  \"blockNumber\": \"0x2a\",\n  \"timestamp\": \"0x67d9d2f0\",\n  \"status\": \"success\",\n  \"type\": \"0x2\",\n  \"nonce\": \"0x15\",\n  \"gasLimit\": \"0x186a0\",\n  \"maxFeePerGas\": \"0x59682f00\",\n  \"maxPriorityFeePerGas\": \"0x3b9aca00\",\n  \"gasUsed\": \"0x5208\",\n  \"inputBytes\": 36,\n  \"call\": {\n    \"selector\": \"0xffffffff\",\n    \"decode\": {\n      \"status\": \"unavailable\",\n      \"error\": \"selector not found in ABI: 0xffffffff\"\n    }\n  }\n}\n"
 	if stdout.String() != want {
 		t.Fatalf("unexpected stdout:\n%s", stdout.String())
 	}

@@ -3,8 +3,10 @@ package actions
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
+	abiutil "github.com/itzfelixv/evmgo/internal/abi"
 	"github.com/itzfelixv/evmgo/internal/eth"
 	"github.com/itzfelixv/evmgo/internal/rpc"
 )
@@ -149,6 +151,10 @@ func GetTransactionView(ctx context.Context, client *rpc.Client, hash string, ab
 				Error:  "no ABI",
 			},
 		}
+
+		if abiPath != "" {
+			view.Call.Decode = decodeTxCall(abiPath, tx.Input)
+		}
 	}
 
 	if includeInput && tx.Input != "" && tx.Input != "0x" {
@@ -201,4 +207,50 @@ func countInputBytes(raw string) int {
 		return 0
 	}
 	return len(decoded)
+}
+
+func decodeTxCall(abiPath string, rawInput string) TxDecode {
+	contractABI, err := abiutil.LoadFile(abiPath)
+	if err != nil {
+		return TxDecode{
+			Status: "unavailable",
+			Error:  err.Error(),
+		}
+	}
+
+	decoded, err := abiutil.DecodeMethodInput(contractABI, rawInput)
+	if err != nil {
+		switch {
+		case errors.Is(err, abiutil.ErrSelectorNotFound):
+			return TxDecode{
+				Status: "unavailable",
+				Error:  err.Error(),
+			}
+		case errors.Is(err, abiutil.ErrInputDecodeMismatch):
+			return TxDecode{
+				Status: "failed",
+				Error:  fmt.Sprintf("ABI mismatch: %v", err),
+			}
+		default:
+			return TxDecode{
+				Status: "failed",
+				Error:  err.Error(),
+			}
+		}
+	}
+
+	args := make([]TxDecodedArg, 0, len(decoded.Args))
+	for _, arg := range decoded.Args {
+		args = append(args, TxDecodedArg{
+			Name:  arg.Name,
+			Type:  arg.Type,
+			Value: arg.Value,
+		})
+	}
+
+	return TxDecode{
+		Status: "decoded",
+		Method: decoded.Method,
+		Args:   args,
+	}
 }
