@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/itzfelixv/evmgo/internal/actions"
 )
 
 func TestBlockCommandAliasJSONOutputUsesEnvRPC(t *testing.T) {
@@ -85,14 +87,26 @@ func TestTxCommandTextOutputUsesFlagRPC(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("Decode failed: %v", err)
 		}
-		if req.Method != "eth_getTransactionByHash" {
+
+		switch req.Method {
+		case "eth_getTransactionByHash":
+			if string(req.Params) != `["`+txHash+`"]` {
+				t.Fatalf("unexpected params: %s", req.Params)
+			}
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x10","blockNumber":"0x2a","type":"0x0","nonce":"0x1","gas":"0x5208","gasPrice":"0x3b9aca00","input":"0x"}}`))
+		case "eth_getTransactionReceipt":
+			if string(req.Params) != `["`+txHash+`"]` {
+				t.Fatalf("unexpected params: %s", req.Params)
+			}
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"transactionHash":"` + txHash + `","blockNumber":"0x2a","status":"0x1","gasUsed":"0x5208","contractAddress":""}}`))
+		case "eth_getBlockByNumber":
+			if string(req.Params) != `["0x2a",false]` {
+				t.Fatalf("unexpected params: %s", req.Params)
+			}
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0xabc","parentHash":"0xdef","timestamp":"0x5","transactions":[]}}`))
+		default:
 			t.Fatalf("unexpected method: %s", req.Method)
 		}
-		if string(req.Params) != `["`+txHash+`"]` {
-			t.Fatalf("unexpected params: %s", req.Params)
-		}
-
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"hash":"` + txHash + `","from":"0x1111111111111111111111111111111111111111","to":"0x2222222222222222222222222222222222222222","value":"0x10","blockNumber":"0x2a"}}`))
 	}))
 	defer server.Close()
 
@@ -105,12 +119,26 @@ func TestTxCommandTextOutputUsesFlagRPC(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 
-	want := "hash: " + txHash + "\nfrom: 0x1111111111111111111111111111111111111111\nto: 0x2222222222222222222222222222222222222222\nvalue: 0x10\nblock: 0x2a\n"
+	want := "hash: " + txHash + "\nkind: transfer\nfrom: 0x1111111111111111111111111111111111111111\nto: 0x2222222222222222222222222222222222222222\nvalue: 0x10\nblock: 0x2a\ntimestamp: 0x5\nstatus: success\ntype: 0x0\nnonce: 0x1\ngas-limit: 0x5208\ngas-price: 0x3b9aca00\ngas-used: 0x5208\ninput-bytes: 0\n"
 	if stdout.String() != want {
 		t.Fatalf("unexpected stdout:\n%s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected no stderr output, got %q", stderr.String())
+	}
+}
+
+func TestAppendDecodeLinesShowsStatusWithoutError(t *testing.T) {
+	lines := appendDecodeLines(nil, actions.TxDecode{Status: "unavailable"})
+
+	want := []string{"  decode: unavailable"}
+	if len(lines) != len(want) {
+		t.Fatalf("unexpected line count: got %d want %d (%q)", len(lines), len(want), lines)
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Fatalf("unexpected line %d: got %q want %q", i, lines[i], want[i])
+		}
 	}
 }
 

@@ -83,8 +83,12 @@ func appendDecodeLines(lines []string, decode actions.TxDecode) []string {
 	if decode.Reason != "" {
 		lines = append(lines, "  reason: "+decode.Reason)
 	}
-	if decode.Status != "decoded" && decode.Error != "" {
-		lines = append(lines, fmt.Sprintf("  decode: %s (%s)", decode.Status, decode.Error))
+	if decode.Status != "decoded" {
+		if decode.Error != "" {
+			lines = append(lines, fmt.Sprintf("  decode: %s (%s)", decode.Status, decode.Error))
+		} else {
+			lines = append(lines, fmt.Sprintf("  decode: %s", decode.Status))
+		}
 	}
 	return lines
 }
