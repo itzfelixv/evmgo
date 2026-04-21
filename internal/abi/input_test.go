@@ -2,9 +2,27 @@ package abiutil
 
 import (
 	"errors"
-	"strings"
 	"testing"
 )
+
+const selectorCollisionABIJSON = `[
+  {
+    "type": "function",
+    "name": "f29621",
+    "inputs": [
+      { "name": "account", "type": "address" }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "f43573",
+    "inputs": [
+      { "name": "amount", "type": "uint256" }
+    ],
+    "outputs": []
+  }
+]`
 
 func TestDecodeMethodInput(t *testing.T) {
 	contractABI, err := LoadFile("../../testdata/abi/erc20.json")
@@ -37,7 +55,7 @@ func TestDecodeMethodInputReturnsSelectorNotFound(t *testing.T) {
 	}
 
 	_, err = DecodeMethodInput(contractABI, "0xffffffff0000000000000000000000001111111111111111111111111111111111111111")
-	if err == nil || !strings.Contains(err.Error(), "selector not found in ABI") {
+	if err == nil || !errors.Is(err, ErrSelectorNotFound) {
 		t.Fatalf("expected selector-not-found error, got %v", err)
 	}
 }
@@ -51,5 +69,17 @@ func TestDecodeMethodInputReturnsMismatch(t *testing.T) {
 	_, err = DecodeMethodInput(contractABI, "0xa9059cbb")
 	if err == nil || !errors.Is(err, ErrInputDecodeMismatch) {
 		t.Fatalf("expected ErrInputDecodeMismatch, got %v", err)
+	}
+}
+
+func TestDecodeMethodInputReturnsAmbiguousSelector(t *testing.T) {
+	contractABI, err := Load([]byte(selectorCollisionABIJSON))
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	_, err = DecodeMethodInput(contractABI, "0xffb7764d0000000000000000000000001111111111111111111111111111111111111111")
+	if err == nil || !errors.Is(err, ErrSelectorAmbiguous) {
+		t.Fatalf("expected ErrSelectorAmbiguous, got %v", err)
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 var (
 	ErrSelectorNotFound    = errors.New("selector not found in ABI")
+	ErrSelectorAmbiguous   = errors.New("ambiguous selector in ABI")
 	ErrInputDecodeMismatch = errors.New("input does not match ABI")
 )
 
@@ -74,11 +75,19 @@ func DecodeMethodInput(contractABI ABI, rawHex string) (DecodedInput, error) {
 }
 
 func lookupMethodBySelector(contractABI ABI, selector string) (Method, error) {
+	matches := make([]Method, 0, 1)
 	for sig, method := range contractABI.methodBySignature {
 		if "0x"+eth.MethodSelector(sig) == selector {
-			return method, nil
+			matches = append(matches, method)
 		}
 	}
 
-	return Method{}, fmt.Errorf("%w: %s", ErrSelectorNotFound, selector)
+	switch len(matches) {
+	case 0:
+		return Method{}, fmt.Errorf("%w: %s", ErrSelectorNotFound, selector)
+	case 1:
+		return matches[0], nil
+	default:
+		return Method{}, fmt.Errorf("%w: %s", ErrSelectorAmbiguous, selector)
+	}
 }
