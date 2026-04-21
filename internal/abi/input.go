@@ -9,7 +9,6 @@ import (
 
 var (
 	ErrSelectorNotFound    = errors.New("selector not found in ABI")
-	ErrSelectorAmbiguous   = errors.New("ambiguous selector in ABI")
 	ErrInputDecodeMismatch = errors.New("input does not match ABI")
 )
 
@@ -88,6 +87,6 @@ func lookupMethodBySelector(contractABI ABI, selector string) (Method, error) {
 	case 1:
 		return matches[0], nil
 	default:
-		return Method{}, fmt.Errorf("%w: %s", ErrSelectorAmbiguous, selector)
+		return Method{}, fmt.Errorf("%w: ambiguous selector %s", ErrInputDecodeMismatch, selector)
 	}
 }

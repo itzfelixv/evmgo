@@ -2,6 +2,7 @@ package abiutil
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -79,7 +80,7 @@ func TestDecodeMethodInputReturnsAmbiguousSelector(t *testing.T) {
 	}
 
 	_, err = DecodeMethodInput(contractABI, "0xffb7764d0000000000000000000000001111111111111111111111111111111111111111")
-	if err == nil || !errors.Is(err, ErrSelectorAmbiguous) {
-		t.Fatalf("expected ErrSelectorAmbiguous, got %v", err)
+	if err == nil || !errors.Is(err, ErrInputDecodeMismatch) || !strings.Contains(err.Error(), "ambiguous selector") {
+		t.Fatalf("expected ambiguous decode-mismatch error, got %v", err)
 	}
 }
