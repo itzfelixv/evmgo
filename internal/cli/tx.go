@@ -10,7 +10,12 @@ import (
 )
 
 func newTxCmd(flags *config.GlobalFlags, deps commandDeps) *cobra.Command {
-	return &cobra.Command{
+	var (
+		abiPath   string
+		showInput bool
+	)
+
+	cmd := &cobra.Command{
 		Use:   "tx <hash>",
 		Short: "Fetch a transaction by hash",
 		Args:  cobra.ExactArgs(1),
@@ -24,7 +29,7 @@ func newTxCmd(flags *config.GlobalFlags, deps commandDeps) *cobra.Command {
 				return err
 			}
 
-			result, err := actions.GetTransaction(cmd.Context(), rpc.NewClient(endpoint), args[0])
+			result, err := actions.GetTransactionView(cmd.Context(), rpc.NewClient(endpoint), args[0], abiPath, showInput)
 			if err != nil {
 				return err
 			}
@@ -33,14 +38,11 @@ func newTxCmd(flags *config.GlobalFlags, deps commandDeps) *cobra.Command {
 				return output.WriteJSON(deps.stdout, result)
 			}
 
-			return output.WriteText(
-				deps.stdout,
-				"hash: "+result.Hash,
-				"from: "+result.From,
-				"to: "+result.To,
-				"value: "+result.Value,
-				"block: "+result.BlockNumber,
-			)
+			return output.WriteText(deps.stdout, renderTxText(result)...)
 		},
 	}
+
+	cmd.Flags().StringVar(&abiPath, "abi", "", "Path to ABI JSON file")
+	cmd.Flags().BoolVar(&showInput, "input", false, "Show raw transaction input bytes")
+	return cmd
 }
