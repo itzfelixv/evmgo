@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose a new capability or behavior change for evmgo
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for actionable feature requests.
+
+        For usage questions, troubleshooting help, or general support, use GitHub Discussions instead:
+        https://github.com/itzfelixv/evmgo/discussions
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What problem are you trying to solve?
+      placeholder: I want to inspect ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What would you like evmgo to do?
+      placeholder: Add a command or flag that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: fit
+    attributes:
+      label: Why this belongs in evmgo
+      description: Explain why this should live in the CLI instead of an external script or separate tool
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What are you doing today, and why is it not enough?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Extra context
+      description: Add examples, related commands, or prior art if it helps

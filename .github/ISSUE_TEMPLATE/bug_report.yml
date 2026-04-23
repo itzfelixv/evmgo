@@ -1,0 +1,98 @@
+name: Bug report
+description: Report a reproducible problem in evmgo
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for reproducible problems in `evmgo`.
+
+        For usage questions, troubleshooting help, or general support, use GitHub Discussions instead:
+        https://github.com/itzfelixv/evmgo/discussions
+
+  - type: input
+    id: version
+    attributes:
+      label: evmgo version
+      description: Release tag or commit SHA
+      placeholder: v0.1.1
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command used
+      description: Paste the exact command that triggered the problem
+      placeholder: |
+        evmgo tx 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --abi ./erc20.json
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest set of steps that reproduces the problem
+      placeholder: |
+        1. Set EVMGO_RPC to ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: input
+    id: rpc
+    attributes:
+      label: RPC provider or node
+      description: Provider name, client name, or node type
+      placeholder: Infura, Alchemy, Erigon, Geth, local Anvil
+    validations:
+      required: true
+
+  - type: input
+    id: chain
+    attributes:
+      label: Chain or network
+      description: Where did this happen?
+      placeholder: Ethereum mainnet, Sepolia, Arbitrum One
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, shell, and Go version if you built evmgo from source
+      placeholder: |
+        OS: Ubuntu 24.04
+        Shell: bash
+        Go: 1.26.2
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Extra context or logs
+      description: Add anything else that would help debug the problem
+      render: text
