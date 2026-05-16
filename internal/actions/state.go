@@ -60,8 +60,10 @@ type CodeDiff struct {
 }
 
 type StorageDiffEntry struct {
-	Slot  string     `json:"slot"`
-	Value StringDiff `json:"value"`
+	Slot    string `json:"slot"`
+	Old     string `json:"old"`
+	New     string `json:"new"`
+	Changed bool   `json:"changed"`
 }
 
 func GetBalance(ctx context.Context, client *rpc.Client, address string) (BalanceResult, error) {
