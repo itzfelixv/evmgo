@@ -168,9 +168,20 @@ func TestDiffStateAccountOnlyUnchanged(t *testing.T) {
 	if len(calls) != 6 {
 		t.Fatalf("unexpected call count: %d", len(calls))
 	}
-	for i, call := range calls {
-		if call.Params[0] != address {
-			t.Fatalf("unexpected address for call %d: %#v", i, call)
+	wantCalls := []struct {
+		Method string
+		Params []string
+	}{
+		{Method: "eth_getBalance", Params: []string{address, "0x64"}},
+		{Method: "eth_getTransactionCount", Params: []string{address, "0x64"}},
+		{Method: "eth_getCode", Params: []string{address, "0x64"}},
+		{Method: "eth_getBalance", Params: []string{address, "0xc8"}},
+		{Method: "eth_getTransactionCount", Params: []string{address, "0xc8"}},
+		{Method: "eth_getCode", Params: []string{address, "0xc8"}},
+	}
+	for i, want := range wantCalls {
+		if calls[i].Method != want.Method || len(calls[i].Params) != 2 || calls[i].Params[0] != want.Params[0] || calls[i].Params[1] != want.Params[1] {
+			t.Fatalf("unexpected call %d: got=%#v want=%#v", i, calls[i], want)
 		}
 	}
 	if result.Changed {
@@ -194,49 +205,85 @@ func TestDiffStateAccountOnlyUnchanged(t *testing.T) {
 }
 
 func TestDiffStateMalformedCodeReturnsError(t *testing.T) {
-	address := "0x1111111111111111111111111111111111111111"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
-
-		var req struct {
-			Method string          `json:"method"`
-			Params json.RawMessage `json:"params"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			t.Fatalf("failed to decode request: %v", err)
-		}
-		var params []string
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			t.Fatalf("failed to decode params: %v", err)
-		}
-		if len(params) != 2 || params[0] != address {
-			t.Fatalf("unexpected params: %#v", params)
-		}
-
-		result := "0x1"
-		if req.Method == "eth_getCode" && params[1] == "0x64" {
-			result = "0xzz"
-		}
-		if req.Method == "eth_getCode" && params[1] == "0xc8" {
-			result = "0x"
-		}
-
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"` + result + `"}`))
-	}))
-	defer server.Close()
-
-	fromBlock, _ := rpc.ParseBlockRef("100")
-	toBlock, _ := rpc.ParseBlockRef("200")
-	_, err := DiffState(context.Background(), rpc.NewClient(server.URL), StateDiffQuery{
-		Address:   address,
-		FromBlock: fromBlock,
-		ToBlock:   toBlock,
-	})
-	if err == nil {
-		t.Fatal("expected malformed code to return error")
+	tests := []struct {
+		name       string
+		block      string
+		code       string
+		wantErrSub string
+	}{
+		{
+			name:       "from non hex",
+			block:      "0x64",
+			code:       "0xzz",
+			wantErrSub: "from code",
+		},
+		{
+			name:       "to non hex",
+			block:      "0xc8",
+			code:       "0xzz",
+			wantErrSub: "to code",
+		},
+		{
+			name:       "from odd length",
+			block:      "0x64",
+			code:       "0x1",
+			wantErrSub: "from code",
+		},
+		{
+			name:       "to odd length",
+			block:      "0xc8",
+			code:       "0x1",
+			wantErrSub: "to code",
+		},
 	}
-	if !strings.Contains(err.Error(), "from code") {
-		t.Fatalf("expected from code context in error, got: %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			address := "0x1111111111111111111111111111111111111111"
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer r.Body.Close()
+
+				var req struct {
+					Method string          `json:"method"`
+					Params json.RawMessage `json:"params"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Fatalf("failed to decode request: %v", err)
+				}
+				var params []string
+				if err := json.Unmarshal(req.Params, &params); err != nil {
+					t.Fatalf("failed to decode params: %v", err)
+				}
+				if len(params) != 2 || params[0] != address {
+					t.Fatalf("unexpected params: %#v", params)
+				}
+
+				result := "0x1"
+				if req.Method == "eth_getCode" {
+					result = "0x"
+					if params[1] == tt.block {
+						result = tt.code
+					}
+				}
+
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"` + result + `"}`))
+			}))
+			defer server.Close()
+
+			fromBlock, _ := rpc.ParseBlockRef("100")
+			toBlock, _ := rpc.ParseBlockRef("200")
+			_, err := DiffState(context.Background(), rpc.NewClient(server.URL), StateDiffQuery{
+				Address:   address,
+				FromBlock: fromBlock,
+				ToBlock:   toBlock,
+			})
+			if err == nil {
+				t.Fatal("expected malformed code to return error")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrSub) {
+				t.Fatalf("expected %q context in error, got: %v", tt.wantErrSub, err)
+			}
+		})
 	}
 }
 

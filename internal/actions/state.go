@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/itzfelixv/evmgo/internal/eth"
 	"github.com/itzfelixv/evmgo/internal/rpc"
@@ -149,6 +150,10 @@ func codeDiff(oldHash string, newHash string) CodeDiff {
 }
 
 func codeHash(code string) (string, error) {
+	body := strings.TrimPrefix(code, "0x")
+	if !strings.HasPrefix(code, "0x") || len(body)%2 == 1 {
+		return "", fmt.Errorf("invalid code bytes %q", code)
+	}
 	value, err := eth.DecodeHexBytes(code)
 	if err != nil {
 		return "", err
