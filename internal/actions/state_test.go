@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/itzfelixv/evmgo/internal/rpc"
@@ -29,6 +30,9 @@ func TestDiffStateAccountOnlyChanged(t *testing.T) {
 		var params []string
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			t.Fatalf("failed to decode params: %v", err)
+		}
+		if len(params) != 2 || params[0] != address {
+			t.Fatalf("unexpected params: %#v", params)
 		}
 		calls = append(calls, struct {
 			Method string
@@ -66,6 +70,22 @@ func TestDiffStateAccountOnlyChanged(t *testing.T) {
 	if len(calls) != 6 {
 		t.Fatalf("unexpected call count: %d", len(calls))
 	}
+	wantCalls := []struct {
+		Method string
+		Params []string
+	}{
+		{Method: "eth_getBalance", Params: []string{address, "0x64"}},
+		{Method: "eth_getTransactionCount", Params: []string{address, "0x64"}},
+		{Method: "eth_getCode", Params: []string{address, "0x64"}},
+		{Method: "eth_getBalance", Params: []string{address, "0xc8"}},
+		{Method: "eth_getTransactionCount", Params: []string{address, "0xc8"}},
+		{Method: "eth_getCode", Params: []string{address, "0xc8"}},
+	}
+	for i, want := range wantCalls {
+		if calls[i].Method != want.Method || len(calls[i].Params) != 2 || calls[i].Params[0] != want.Params[0] || calls[i].Params[1] != want.Params[1] {
+			t.Fatalf("unexpected call %d: got=%#v want=%#v", i, calls[i], want)
+		}
+	}
 	if result.Address != address {
 		t.Fatalf("unexpected address: %q", result.Address)
 	}
@@ -94,6 +114,10 @@ func TestDiffStateAccountOnlyChanged(t *testing.T) {
 
 func TestDiffStateAccountOnlyUnchanged(t *testing.T) {
 	address := "0x1111111111111111111111111111111111111111"
+	var calls []struct {
+		Method string
+		Params []string
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 
@@ -108,6 +132,13 @@ func TestDiffStateAccountOnlyUnchanged(t *testing.T) {
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			t.Fatalf("failed to decode params: %v", err)
 		}
+		if len(params) != 2 || params[0] != address {
+			t.Fatalf("unexpected params: %#v", params)
+		}
+		calls = append(calls, struct {
+			Method string
+			Params []string
+		}{Method: req.Method, Params: params})
 
 		results := map[string]string{
 			"eth_getBalance":          "0x1",
@@ -134,6 +165,14 @@ func TestDiffStateAccountOnlyUnchanged(t *testing.T) {
 		t.Fatalf("DiffState returned error: %v", err)
 	}
 
+	if len(calls) != 6 {
+		t.Fatalf("unexpected call count: %d", len(calls))
+	}
+	for i, call := range calls {
+		if call.Params[0] != address {
+			t.Fatalf("unexpected address for call %d: %#v", i, call)
+		}
+	}
 	if result.Changed {
 		t.Fatal("expected result to be unchanged")
 	}
@@ -151,6 +190,53 @@ func TestDiffStateAccountOnlyUnchanged(t *testing.T) {
 	}
 	if result.Account.Code.OldHash != result.Account.Code.NewHash {
 		t.Fatalf("expected equal code hashes: %#v", result.Account.Code)
+	}
+}
+
+func TestDiffStateMalformedCodeReturnsError(t *testing.T) {
+	address := "0x1111111111111111111111111111111111111111"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		var req struct {
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		var params []string
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Fatalf("failed to decode params: %v", err)
+		}
+		if len(params) != 2 || params[0] != address {
+			t.Fatalf("unexpected params: %#v", params)
+		}
+
+		result := "0x1"
+		if req.Method == "eth_getCode" && params[1] == "0x64" {
+			result = "0xzz"
+		}
+		if req.Method == "eth_getCode" && params[1] == "0xc8" {
+			result = "0x"
+		}
+
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"` + result + `"}`))
+	}))
+	defer server.Close()
+
+	fromBlock, _ := rpc.ParseBlockRef("100")
+	toBlock, _ := rpc.ParseBlockRef("200")
+	_, err := DiffState(context.Background(), rpc.NewClient(server.URL), StateDiffQuery{
+		Address:   address,
+		FromBlock: fromBlock,
+		ToBlock:   toBlock,
+	})
+	if err == nil {
+		t.Fatal("expected malformed code to return error")
+	}
+	if !strings.Contains(err.Error(), "from code") {
+		t.Fatalf("expected from code context in error, got: %v", err)
 	}
 }
 

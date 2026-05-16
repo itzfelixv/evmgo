@@ -94,7 +94,7 @@ func DiffState(ctx context.Context, client *rpc.Client, query StateDiffQuery) (S
 	account := AccountDiffResult{
 		Balance: stringDiff(from.balance, to.balance),
 		Nonce:   stringDiff(from.nonce, to.nonce),
-		Code:    codeDiff(from.code, to.code),
+		Code:    codeDiff(from.codeHash, to.codeHash),
 	}
 
 	return StateDiffResult{
@@ -107,9 +107,10 @@ func DiffState(ctx context.Context, client *rpc.Client, query StateDiffQuery) (S
 }
 
 type accountState struct {
-	balance string
-	nonce   string
-	code    string
+	balance  string
+	nonce    string
+	code     string
+	codeHash string
 }
 
 func readAccountState(ctx context.Context, client *rpc.Client, address string, block string, side string) (accountState, error) {
@@ -123,6 +124,11 @@ func readAccountState(ctx context.Context, client *rpc.Client, address string, b
 	if err := client.Call(ctx, "eth_getCode", []any{address, block}, &state.code); err != nil {
 		return accountState{}, fmt.Errorf("%s code: %w", side, err)
 	}
+	codeHash, err := codeHash(state.code)
+	if err != nil {
+		return accountState{}, fmt.Errorf("%s code: %w", side, err)
+	}
+	state.codeHash = codeHash
 	return state, nil
 }
 
@@ -134,9 +140,7 @@ func stringDiff(oldValue string, newValue string) StringDiff {
 	}
 }
 
-func codeDiff(oldCode string, newCode string) CodeDiff {
-	oldHash := codeHash(oldCode)
-	newHash := codeHash(newCode)
+func codeDiff(oldHash string, newHash string) CodeDiff {
 	return CodeDiff{
 		OldHash: oldHash,
 		NewHash: newHash,
@@ -144,12 +148,12 @@ func codeDiff(oldCode string, newCode string) CodeDiff {
 	}
 }
 
-func codeHash(code string) string {
+func codeHash(code string) (string, error) {
 	value, err := eth.DecodeHexBytes(code)
 	if err != nil {
-		value = nil
+		return "", err
 	}
-	return eth.EncodeHexBytes(eth.Keccak256(value))
+	return eth.EncodeHexBytes(eth.Keccak256(value)), nil
 }
 
 func GetCode(ctx context.Context, client *rpc.Client, address string, ref rpc.BlockRef) (CodeResult, error) {
