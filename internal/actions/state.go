@@ -31,6 +31,7 @@ type StateDiffQuery struct {
 	Address   string
 	FromBlock rpc.BlockRef
 	ToBlock   rpc.BlockRef
+	Slots     []string
 }
 
 type StateDiffResult struct {
