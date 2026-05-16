@@ -260,7 +260,7 @@ func TestDiffStateIncludesStorageSlots(t *testing.T) {
 		Address:   address,
 		FromBlock: fromBlock,
 		ToBlock:   toBlock,
-		Slots:     []string{"0x0", "0x1"},
+		Slots:     []string{"0x1", "0x0"},
 	})
 	if err != nil {
 		t.Fatalf("DiffState returned error: %v", err)
@@ -275,12 +275,27 @@ func TestDiffStateIncludesStorageSlots(t *testing.T) {
 	if result.Account.Balance.Changed || result.Account.Nonce.Changed || result.Account.Code.Changed {
 		t.Fatalf("expected account diff to be unchanged: %#v", result.Account)
 	}
+	wantStorageCalls := []struct {
+		Method string
+		Params []string
+	}{
+		{Method: "eth_getStorageAt", Params: []string{address, "0x1", "0x64"}},
+		{Method: "eth_getStorageAt", Params: []string{address, "0x1", "0xc8"}},
+		{Method: "eth_getStorageAt", Params: []string{address, "0x0", "0x64"}},
+		{Method: "eth_getStorageAt", Params: []string{address, "0x0", "0xc8"}},
+	}
+	for i, want := range wantStorageCalls {
+		got := calls[6+i]
+		if got.Method != want.Method || len(got.Params) != 3 || got.Params[0] != want.Params[0] || got.Params[1] != want.Params[1] || got.Params[2] != want.Params[2] {
+			t.Fatalf("unexpected storage call %d: got=%#v want=%#v", i, got, want)
+		}
+	}
 	if len(result.Storage) != 2 {
 		t.Fatalf("unexpected storage entry count: %d", len(result.Storage))
 	}
 	wantStorage := []StorageDiffEntry{
-		{Slot: "0x0", Old: "0x00", New: "0x01", Changed: true},
 		{Slot: "0x1", Old: "0x02", New: "0x02", Changed: false},
+		{Slot: "0x0", Old: "0x00", New: "0x01", Changed: true},
 	}
 	for i, want := range wantStorage {
 		if result.Storage[i] != want {
@@ -290,47 +305,80 @@ func TestDiffStateIncludesStorageSlots(t *testing.T) {
 }
 
 func TestDiffStateStorageErrorNamesSlotAndSide(t *testing.T) {
-	address := "0x1111111111111111111111111111111111111111"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
-
-		var req struct {
-			Method string          `json:"method"`
-			Params json.RawMessage `json:"params"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			t.Fatalf("failed to decode request: %v", err)
-		}
-		var params []string
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			t.Fatalf("failed to decode params: %v", err)
-		}
-		if req.Method == "eth_getStorageAt" {
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"storage unavailable"}}`))
-			return
-		}
-
-		result := "0x1"
-		if req.Method == "eth_getCode" {
-			result = "0x"
-		}
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"` + result + `"}`))
-	}))
-	defer server.Close()
-
-	fromBlock, _ := rpc.ParseBlockRef("100")
-	toBlock, _ := rpc.ParseBlockRef("200")
-	_, err := DiffState(context.Background(), rpc.NewClient(server.URL), StateDiffQuery{
-		Address:   address,
-		FromBlock: fromBlock,
-		ToBlock:   toBlock,
-		Slots:     []string{"0x0"},
-	})
-	if err == nil {
-		t.Fatal("expected storage error")
+	tests := []struct {
+		name                string
+		failStorageCall     int
+		wantErrSub          string
+		wantStorageAttempts int
+	}{
+		{
+			name:                "from block",
+			failStorageCall:     1,
+			wantErrSub:          "slot 0x0 at from block",
+			wantStorageAttempts: 1,
+		},
+		{
+			name:                "to block",
+			failStorageCall:     2,
+			wantErrSub:          "slot 0x0 at to block",
+			wantStorageAttempts: 2,
+		},
 	}
-	if !strings.Contains(err.Error(), "slot 0x0 at from block") {
-		t.Fatalf("expected slot and side in error, got: %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			address := "0x1111111111111111111111111111111111111111"
+			storageCalls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer r.Body.Close()
+
+				var req struct {
+					Method string          `json:"method"`
+					Params json.RawMessage `json:"params"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Fatalf("failed to decode request: %v", err)
+				}
+				var params []string
+				if err := json.Unmarshal(req.Params, &params); err != nil {
+					t.Fatalf("failed to decode params: %v", err)
+				}
+				if req.Method == "eth_getStorageAt" {
+					storageCalls++
+					if storageCalls == tt.failStorageCall {
+						_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"storage unavailable"}}`))
+						return
+					}
+					_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x0"}`))
+					return
+				}
+
+				result := "0x1"
+				if req.Method == "eth_getCode" {
+					result = "0x"
+				}
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"` + result + `"}`))
+			}))
+			defer server.Close()
+
+			fromBlock, _ := rpc.ParseBlockRef("100")
+			toBlock, _ := rpc.ParseBlockRef("200")
+			_, err := DiffState(context.Background(), rpc.NewClient(server.URL), StateDiffQuery{
+				Address:   address,
+				FromBlock: fromBlock,
+				ToBlock:   toBlock,
+				Slots:     []string{"0x0"},
+			})
+			if err == nil {
+				t.Fatal("expected storage error")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrSub) {
+				t.Fatalf("expected %q in error, got: %v", tt.wantErrSub, err)
+			}
+			if storageCalls != tt.wantStorageAttempts {
+				t.Fatalf("unexpected storage attempt count: got=%d want=%d", storageCalls, tt.wantStorageAttempts)
+			}
+		})
 	}
 }
 
