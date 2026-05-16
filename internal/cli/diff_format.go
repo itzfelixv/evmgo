@@ -66,7 +66,7 @@ func appendStorageDiffs(lines []string, storage []actions.StorageDiffEntry, show
 			lines = append(lines, "", "storage:")
 		}
 		lines = append(lines,
-			"  slot: "+entry.Slot,
+			"  "+entry.Slot+":",
 			"    old: "+entry.Old,
 			"    new: "+entry.New,
 		)
