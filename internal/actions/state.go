@@ -2,7 +2,9 @@ package actions
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/itzfelixv/evmgo/internal/eth"
 	"github.com/itzfelixv/evmgo/internal/rpc"
 )
 
@@ -24,6 +26,44 @@ type StorageResult struct {
 	Value   string `json:"value"`
 }
 
+type StateDiffQuery struct {
+	Address   string
+	FromBlock rpc.BlockRef
+	ToBlock   rpc.BlockRef
+}
+
+type StateDiffResult struct {
+	Address   string             `json:"address"`
+	FromBlock string             `json:"from_block"`
+	ToBlock   string             `json:"to_block"`
+	Changed   bool               `json:"changed"`
+	Account   AccountDiffResult  `json:"account"`
+	Storage   []StorageDiffEntry `json:"storage,omitempty"`
+}
+
+type AccountDiffResult struct {
+	Balance StringDiff `json:"balance"`
+	Nonce   StringDiff `json:"nonce"`
+	Code    CodeDiff   `json:"code"`
+}
+
+type StringDiff struct {
+	Old     string `json:"old"`
+	New     string `json:"new"`
+	Changed bool   `json:"changed"`
+}
+
+type CodeDiff struct {
+	OldHash string `json:"old_hash"`
+	NewHash string `json:"new_hash"`
+	Changed bool   `json:"changed"`
+}
+
+type StorageDiffEntry struct {
+	Slot  string     `json:"slot"`
+	Value StringDiff `json:"value"`
+}
+
 func GetBalance(ctx context.Context, client *rpc.Client, address string) (BalanceResult, error) {
 	var balance string
 	if err := client.Call(ctx, "eth_getBalance", []any{address, "latest"}, &balance); err != nil {
@@ -34,6 +74,80 @@ func GetBalance(ctx context.Context, client *rpc.Client, address string) (Balanc
 		Address: address,
 		Balance: balance,
 	}, nil
+}
+
+func DiffState(ctx context.Context, client *rpc.Client, query StateDiffQuery) (StateDiffResult, error) {
+	fromBlock := query.FromBlock.RPCArg()
+	toBlock := query.ToBlock.RPCArg()
+
+	from, err := readAccountState(ctx, client, query.Address, fromBlock, "from")
+	if err != nil {
+		return StateDiffResult{}, err
+	}
+	to, err := readAccountState(ctx, client, query.Address, toBlock, "to")
+	if err != nil {
+		return StateDiffResult{}, err
+	}
+
+	account := AccountDiffResult{
+		Balance: stringDiff(from.balance, to.balance),
+		Nonce:   stringDiff(from.nonce, to.nonce),
+		Code:    codeDiff(from.code, to.code),
+	}
+
+	return StateDiffResult{
+		Address:   query.Address,
+		FromBlock: fromBlock,
+		ToBlock:   toBlock,
+		Changed:   account.Balance.Changed || account.Nonce.Changed || account.Code.Changed,
+		Account:   account,
+	}, nil
+}
+
+type accountState struct {
+	balance string
+	nonce   string
+	code    string
+}
+
+func readAccountState(ctx context.Context, client *rpc.Client, address string, block string, side string) (accountState, error) {
+	var state accountState
+	if err := client.Call(ctx, "eth_getBalance", []any{address, block}, &state.balance); err != nil {
+		return accountState{}, fmt.Errorf("%s balance: %w", side, err)
+	}
+	if err := client.Call(ctx, "eth_getTransactionCount", []any{address, block}, &state.nonce); err != nil {
+		return accountState{}, fmt.Errorf("%s nonce: %w", side, err)
+	}
+	if err := client.Call(ctx, "eth_getCode", []any{address, block}, &state.code); err != nil {
+		return accountState{}, fmt.Errorf("%s code: %w", side, err)
+	}
+	return state, nil
+}
+
+func stringDiff(oldValue string, newValue string) StringDiff {
+	return StringDiff{
+		Old:     oldValue,
+		New:     newValue,
+		Changed: oldValue != newValue,
+	}
+}
+
+func codeDiff(oldCode string, newCode string) CodeDiff {
+	oldHash := codeHash(oldCode)
+	newHash := codeHash(newCode)
+	return CodeDiff{
+		OldHash: oldHash,
+		NewHash: newHash,
+		Changed: oldHash != newHash,
+	}
+}
+
+func codeHash(code string) string {
+	value, err := eth.DecodeHexBytes(code)
+	if err != nil {
+		value = nil
+	}
+	return eth.EncodeHexBytes(eth.Keccak256(value))
 }
 
 func GetCode(ctx context.Context, client *rpc.Client, address string, ref rpc.BlockRef) (CodeResult, error) {
