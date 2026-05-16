@@ -204,6 +204,136 @@ func TestDiffStateAccountOnlyUnchanged(t *testing.T) {
 	}
 }
 
+func TestDiffStateIncludesStorageSlots(t *testing.T) {
+	address := "0x1111111111111111111111111111111111111111"
+	var calls []struct {
+		Method string
+		Params []string
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		var req struct {
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		var params []string
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Fatalf("failed to decode params: %v", err)
+		}
+		if len(params) < 2 || params[0] != address {
+			t.Fatalf("unexpected params: %#v", params)
+		}
+		calls = append(calls, struct {
+			Method string
+			Params []string
+		}{Method: req.Method, Params: params})
+
+		results := map[string]string{
+			"eth_getBalance:0x64":          "0x1",
+			"eth_getBalance:0xc8":          "0x1",
+			"eth_getTransactionCount:0x64": "0x3",
+			"eth_getTransactionCount:0xc8": "0x3",
+			"eth_getCode:0x64":             "0x6001",
+			"eth_getCode:0xc8":             "0x6001",
+			"eth_getStorageAt:0x0:0x64":    "0x00",
+			"eth_getStorageAt:0x0:0xc8":    "0x01",
+			"eth_getStorageAt:0x1:0x64":    "0x02",
+			"eth_getStorageAt:0x1:0xc8":    "0x02",
+		}
+		key := req.Method + ":" + strings.Join(params[1:], ":")
+		result, ok := results[key]
+		if !ok {
+			t.Fatalf("unexpected request: method=%q params=%#v", req.Method, params)
+		}
+
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"` + result + `"}`))
+	}))
+	defer server.Close()
+
+	fromBlock, _ := rpc.ParseBlockRef("100")
+	toBlock, _ := rpc.ParseBlockRef("200")
+	result, err := DiffState(context.Background(), rpc.NewClient(server.URL), StateDiffQuery{
+		Address:   address,
+		FromBlock: fromBlock,
+		ToBlock:   toBlock,
+		Slots:     []string{"0x0", "0x1"},
+	})
+	if err != nil {
+		t.Fatalf("DiffState returned error: %v", err)
+	}
+
+	if len(calls) != 10 {
+		t.Fatalf("unexpected call count: %d", len(calls))
+	}
+	if !result.Changed {
+		t.Fatal("expected result to be changed")
+	}
+	if result.Account.Balance.Changed || result.Account.Nonce.Changed || result.Account.Code.Changed {
+		t.Fatalf("expected account diff to be unchanged: %#v", result.Account)
+	}
+	if len(result.Storage) != 2 {
+		t.Fatalf("unexpected storage entry count: %d", len(result.Storage))
+	}
+	wantStorage := []StorageDiffEntry{
+		{Slot: "0x0", Old: "0x00", New: "0x01", Changed: true},
+		{Slot: "0x1", Old: "0x02", New: "0x02", Changed: false},
+	}
+	for i, want := range wantStorage {
+		if result.Storage[i] != want {
+			t.Fatalf("unexpected storage entry %d: got=%#v want=%#v", i, result.Storage[i], want)
+		}
+	}
+}
+
+func TestDiffStateStorageErrorNamesSlotAndSide(t *testing.T) {
+	address := "0x1111111111111111111111111111111111111111"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		var req struct {
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		var params []string
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Fatalf("failed to decode params: %v", err)
+		}
+		if req.Method == "eth_getStorageAt" {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"storage unavailable"}}`))
+			return
+		}
+
+		result := "0x1"
+		if req.Method == "eth_getCode" {
+			result = "0x"
+		}
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"` + result + `"}`))
+	}))
+	defer server.Close()
+
+	fromBlock, _ := rpc.ParseBlockRef("100")
+	toBlock, _ := rpc.ParseBlockRef("200")
+	_, err := DiffState(context.Background(), rpc.NewClient(server.URL), StateDiffQuery{
+		Address:   address,
+		FromBlock: fromBlock,
+		ToBlock:   toBlock,
+		Slots:     []string{"0x0"},
+	})
+	if err == nil {
+		t.Fatal("expected storage error")
+	}
+	if !strings.Contains(err.Error(), "slot 0x0 at from block") {
+		t.Fatalf("expected slot and side in error, got: %v", err)
+	}
+}
+
 func TestDiffStateMalformedCodeReturnsError(t *testing.T) {
 	tests := []struct {
 		name       string
