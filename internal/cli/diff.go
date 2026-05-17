@@ -2,11 +2,13 @@ package cli
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/spf13/cobra"
 
 	"github.com/itzfelixv/evmgo/internal/actions"
 	"github.com/itzfelixv/evmgo/internal/config"
+	"github.com/itzfelixv/evmgo/internal/eth"
 	"github.com/itzfelixv/evmgo/internal/output"
 	"github.com/itzfelixv/evmgo/internal/rpc"
 )
@@ -61,10 +63,14 @@ func newDiffStateCmd(flags *config.GlobalFlags, deps commandDeps) *cobra.Command
 				if err := validateStorageSlot(slot); err != nil {
 					return err
 				}
-				if _, ok := seenSlots[slot]; ok {
+				key, err := canonicalStorageSlotKey(slot)
+				if err != nil {
+					return err
+				}
+				if _, ok := seenSlots[key]; ok {
 					return fmt.Errorf("duplicate slot %q", slot)
 				}
-				seenSlots[slot] = struct{}{}
+				seenSlots[key] = struct{}{}
 			}
 
 			endpoint, err := config.ResolveRPCURL(*flags, deps.lookupEnv)
@@ -96,4 +102,12 @@ func newDiffStateCmd(flags *config.GlobalFlags, deps commandDeps) *cobra.Command
 	cmd.Flags().BoolVar(&showAll, "all", false, "Show unchanged fields")
 
 	return cmd
+}
+
+func canonicalStorageSlotKey(slot string) (string, error) {
+	value, err := eth.DecodeHexBytes(slot)
+	if err != nil {
+		return "", err
+	}
+	return eth.EncodeQuantity(new(big.Int).SetBytes(value)), nil
 }

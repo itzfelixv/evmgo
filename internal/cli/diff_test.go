@@ -145,24 +145,30 @@ func TestDiffStateCommandRejectsDuplicateSlotBeforeRPC(t *testing.T) {
 	server, calls := newDiffStateRPCServer(t, map[string]string{})
 	defer server.Close()
 
-	stdout := new(bytes.Buffer)
-	stderr := new(bytes.Buffer)
-	cmd := NewRootCmd(stdout, stderr, func(string) string { return "" })
-	cmd.SetArgs([]string{
-		"--rpc", server.URL,
-		"diff", "state", diffStateAddress,
-		"--from-block", "100",
-		"--to-block", "200",
-		"--slot", "0x0",
-		"--slot", "0x0",
-	})
+	for _, slots := range [][]string{
+		{"0x0", "0x0"},
+		{"0x0", "0x00"},
+	} {
+		stdout := new(bytes.Buffer)
+		stderr := new(bytes.Buffer)
+		cmd := NewRootCmd(stdout, stderr, func(string) string { return "" })
+		cmd.SetArgs([]string{
+			"--rpc", server.URL,
+			"diff", "state", diffStateAddress,
+			"--from-block", "100",
+			"--to-block", "200",
+			"--slot", slots[0],
+			"--slot", slots[1],
+		})
 
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected duplicate slot error")
-	}
-	if err.Error() != `duplicate slot "0x0"` {
-		t.Fatalf("unexpected error: %q", err.Error())
+		err := cmd.Execute()
+		if err == nil {
+			t.Fatalf("expected duplicate slot error for %#v", slots)
+		}
+		want := `duplicate slot "` + slots[1] + `"`
+		if err.Error() != want {
+			t.Fatalf("unexpected error for %#v: %q", slots, err.Error())
+		}
 	}
 	if len(*calls) != 0 {
 		t.Fatalf("expected no RPC calls, got %d", len(*calls))
