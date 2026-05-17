@@ -214,7 +214,7 @@ evmgo diff state 0x2222222222222222222222222222222222222222 --from-block 1900000
 Default text output shows only changed fields. If no inspected field changed, the command exits successfully and prints:
 
 ```text
-no changes detected between blocks 19000000 and 19000100
+no changes detected between blocks 0x121eac0 and 0x121eb24
 ```
 
 Compared by default:
