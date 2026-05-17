@@ -9,6 +9,7 @@ A CLI for querying the EVM. No browser required. No mouse involved.
 - Raw JSON-RPC passthrough
 - Block, transaction, and receipt reads
 - Native balance, code, and storage reads
+- Block-to-block account and explicit storage-slot state diffs
 - ABI-backed `eth_call`
 - Log queries with optional event-name lookup from an ABI
 - Human-readable text output by default
@@ -199,6 +200,35 @@ Validation:
 - Address must be a valid hex address
 - Slot must be a hex value
 - Slot accepts either a hex integer like `0x0`/`0x2a` or a hex byte string up to 32 bytes
+
+### `diff state`
+
+Compare account state for one address between two blocks on the same RPC endpoint.
+
+```bash
+evmgo diff state 0x2222222222222222222222222222222222222222 --from-block 19000000 --to-block 19000100
+evmgo diff state 0x2222222222222222222222222222222222222222 --from-block 19000000 --to-block 19000100 --slot 0x0 --slot 0x1
+evmgo diff state 0x2222222222222222222222222222222222222222 --from-block 19000000 --to-block 19000100 --all
+```
+
+Default text output shows only changed fields. If no inspected field changed, the command exits successfully and prints:
+
+```text
+no changes detected between blocks 19000000 and 19000100
+```
+
+Compared by default:
+
+- Balance
+- Nonce
+- Code hash
+
+Optional:
+
+- `--slot <slot>` compares a storage slot and can be repeated
+- `--all` shows unchanged inspected fields too
+
+Storage slots are explicit. `diff state` does not discover every changed storage slot or decode Solidity storage layout.
 
 ### `call`
 
