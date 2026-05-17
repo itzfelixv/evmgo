@@ -60,6 +60,7 @@ func NewRootCmd(stdout, stderr io.Writer, lookupEnv func(string) string) *cobra.
 
 func registerCommands(root *cobra.Command, flags *config.GlobalFlags, deps commandDeps) {
 	root.AddCommand(
+		newDiffCmd(flags, deps),
 		newRPCCmd(flags, deps),
 		newBlockCmd(flags, deps),
 		newTxCmd(flags, deps),

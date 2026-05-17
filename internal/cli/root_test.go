@@ -47,6 +47,18 @@ func TestRootRegistersStateCommands(t *testing.T) {
 	}
 }
 
+func TestRootRegistersDiffStateCommand(t *testing.T) {
+	cmd := NewRootCmd(new(bytes.Buffer), new(bytes.Buffer), func(string) string { return "" })
+
+	got, _, err := cmd.Find([]string{"diff", "state"})
+	if err != nil {
+		t.Fatalf("expected to find diff state: %v", err)
+	}
+	if got.Name() != "state" {
+		t.Fatalf("expected command state, got %q", got.Name())
+	}
+}
+
 func TestRootCommandWithoutArgsShowsHelp(t *testing.T) {
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
